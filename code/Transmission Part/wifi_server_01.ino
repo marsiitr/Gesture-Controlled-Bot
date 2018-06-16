@@ -1,108 +1,61 @@
- 
-// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
-// for both classes must be in the include path of your project
-#include<I2Cdev.h>
+/*  Connects to the home WiFi network
+ *  Asks some network parameters
+ *  Starts WiFi server with fix IP and listens
+ *  Receives and sends messages to the client
+ *  Communicates: wifi_client_01.ino
+ */
 #include <SPI.h>
+
 #include <ESP8266WiFi.h>
+#include<I2Cdev.h>
 #include "I2Cdev.h"
 char controller[2]={'h','e'};
-byte ledPin = 2;
-char ssid[] = "shubhs";           // SSID of your home WiFi
-char pass[] = "shubhanshu";            // password of your home WiFi
 #include "MPU6050_6Axis_MotionApps20.h"
-//#include "MPU6050.h" // not necessary if using MotionApps include file
-
-// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
-// is used in I2Cdev.h
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-    #include "Wire.h"
-#endif
-
-// class default I2C address is 0x68
-// specific I2C addresses may be passed as a parameter here
-// AD0 low = 0x68 (default for SparkFun breakout and InvenSense evaluation board)
-// AD0 high = 0x69
-unsigned long askTimer = 0;
-IPAddress server(192,168,0,80);       // the fix IP address of the server
-WiFiClient client;
+#include <MPU6050.h>
+//#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+  //  #include "Wire.h"
+//#endif
 MPU6050 mpu;
-//MPU6050 mpu(0x69); // <-- use for AD0 high
-
-/* =========================================================================
-   NOTE: In addition to connection 3.3v, GND, SDA, and SCL, this sketch
-   depends on the MPU-6050's INT pin being connected to the Arduino's
-   external interrupt #0 pin. On the Arduino Uno and Mega 2560, this is
-   digital I/O pin 2.
- * ========================================================================= */
-
-
 #define OUTPUT_READABLE_YAWPITCHROLL
 
 
 
-#define INTERRUPT_PIN 15  //  for NODE MCU
+#define INTERRUPT_PIN  15//  for NODE MCU
 
-const char DEVICE_NAME[] = "mpu6050";
 bool blinkState = false;
-
-// MPU control/status vars
+//int pwm1=255;
+byte ledPin = 2;
 bool dmpReady = false;  // set true if DMP init was successful
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
-uint8_t fifoBuffer[64]; // FIFO storage buffer
-
-// orientation/motion vars
+uint8_t fifoBuffer[64]; // FIFO storage buffer;
+char ssid[] = "MaRS_private";               // SSID of your home WiFi
+char pass[] = "marsiitr1";    
 Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+// password of your home WiFi
+WiFiServer server(80);                    
 
-
-
-
-// ================================================================
-// ===               INTERRUPT DETECTION ROUTINE                ===
-// ================================================================
-
+IPAddress ip(192, 168, 0, 80);            // IP address of the server
+IPAddress gateway(192,168,0,1);           // gateway of your network
+IPAddress subnet(255,255,255,0);          // subnet mask of your network
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
     mpuInterrupt = true;
 }
-
-
-
-// ================================================================
-// ===                      INITIAL SETUP                       ===
-// ================================================================
-
 void setup() {
-    // join I2C bus (I2Cdev library doesn't do this automatically)
-    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
         Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
-
-    // initialize serial communication
-    // (115200 chosen because it is required for Teapot Demo output, but it's
-    // really up to you depending on your project)
-    Serial.begin(115200);   
-    while (!Serial); // wait for Leonardo enumeration, others continue immediately
-   WiFi.begin(ssid, pass);             // connects to the WiFi router
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(500);
-  }
-    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
-    // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
-    // the baud timing being too misaligned with processor ticks. You must use
-    // 38400 or slower in these cases, or use some kind of external separate
-    // crystal solution for the UART timer.
-
-    // initialize device
-    Serial.println(F("Initializing I2C devices..."));
+  Serial.begin(115200);                   // only for debug
+  while (!Serial);
+  Serial.println(F("Initializing I2C devices..."));
     mpu.initialize();
     pinMode(INTERRUPT_PIN, INPUT);
 
@@ -141,7 +94,7 @@ void setup() {
         Serial.println(F("DMP ready! Waiting for first interrupt..."));
         dmpReady = true;
 
-        // get expected DMP packet size for later comparison  
+        // get expected DMP packet size for later comparison
         packetSize = mpu.dmpGetFIFOPacketSize();
     } else {
         // ERROR!
@@ -155,19 +108,26 @@ void setup() {
 
     // configure LED for output
     pinMode(LED_BUILTIN, OUTPUT);
+  WiFi.config(ip, gateway, subnet);       // forces to use the fix IP
+  WiFi.begin(ssid, pass);                 // connects to the WiFi router
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  server.begin();                         // starts the server
+/*  Serial.println("Connected to wifi");
+  Serial.print("Status: "); Serial.println(WiFi.status());  // some parameters from the network
+  Serial.print("IP: ");     Serial.println(WiFi.localIP());
+  Serial.print("Subnet: "); Serial.println(WiFi.subnetMask());
+  Serial.print("Gateway: "); Serial.println(WiFi.gatewayIP());
+  Serial.print("SSID: "); Serial.println(WiFi.SSID());
+  Serial.print("Signal: "); Serial.println(WiFi.RSSI());
+  Serial.print("Networks: "); Serial.println(WiFi.scanNetworks());*/
+  pinMode(ledPin, OUTPUT);
 }
 
-
-
-// ================================================================
-// ===                    MAIN PROGRAM LOOP                     ===
-// ================================================================
-
-void loop() {
-    // if programming failed, don't try to do anything
-    client.connect(server, 80);   // Connection to the server
-
-    if (!dmpReady) return;
+void loop () {
+  if (!dmpReady) return;
 
     // wait for MPU interrupt or extra packet(s) available
     while (!mpuInterrupt && fifoCount < packetSize) {
@@ -222,36 +182,47 @@ void loop() {
         
              if(ypr[1] * 180/M_PI>20){
             controller[0]='f' ;
-            controller[1]=min(9,max(0,int(map(ypr[1] * 180/M_PI,20,90,0,9))));
-    Serial.println(controller);
-         client.println(controller);   
+            controller[1]=min(9,max(0,int(map(ypr[1] * 180/M_PI,30,90,0,9))));
+   // Serial.println(controller);
             }
             else if(ypr[1] * 180/M_PI<-20){
             controller[0]='b' ;
-            controller[1]=min(9,max(0,int(map(ypr[1] * 180/M_PI,-20,-90,0,9))));
-    Serial.println(controller);
+            controller[1]=min(9,max(0,int(map(ypr[1] * 180/M_PI,-30,-90,0,9))));
+    //Serial.println(controller);
             }
            else if(ypr[2] * 180/M_PI>20){
             controller[0]='r' ;
-            controller[1]=min(9,max(0,int(map(ypr[2] * 180/M_PI,20,90,0,9))));
-    Serial.println(controller);
+            controller[1]=min(9,max(0,int(map(ypr[2] * 180/M_PI,10,90,0,9))));
+    //Serial.println(controller);
             }
             else if(ypr[2] * 180/M_PI<-20){
             controller[0]='l' ;
-            controller[1]=min(9,max(0,int(map(ypr[2] * 180/M_PI,-20,-90,0,9))));
-            Serial.println(controller);
+            controller[1]=min(9,max(0,int(map(ypr[2] * 180/M_PI,-10,-90,0,9))));
+           // Serial.println(controller);
             }
             else
             {
                 controller[0]='s';
                 controller[1]=0;
-                Serial.println(controller);
+             //   Serial.println(controller);
             }
-              // sends the message to the server
-            
             #endif
          // blink LED to indicate activity
-        blinkState = !blinkState;
-        digitalWrite(LED_BUILTIN, blinkState);
+     //   blinkState = !blinkState;
+       // digitalWrite(LED_BUILTIN, blinkState);
     }
-}   
+  WiFiClient client = server.available();
+  if (client) {
+    if (client.connected()) {
+      digitalWrite(ledPin, LOW);  // to show the communication only (inverted logic)
+      Serial.println(".");
+      String request = client.readStringUntil('\r');    // receives the message from the client
+      Serial.print("From client: "); Serial.println(request);
+      client.flush();
+      client.println(controller) ;//&& controller[1]);// sends the answer to the client
+      //client.println(controller[1]);
+      digitalWrite(ledPin, HIGH);
+    }
+    client.stop();                // tarminates the connection with the client
+  }
+}
