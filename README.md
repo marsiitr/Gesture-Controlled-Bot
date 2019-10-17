@@ -1,7 +1,6 @@
 # Gesture-Controlled-Bot
 ---
-The idea is to make a bot that moves with the help of the motion of hand. BAsically a bot consist of car chasis that has been controlled   
-through WIFI.
+The idea is to make a bot that moves with the help of the motion of hand. Basically the bot consisted of a car chasis that has been controlled wirelessly with the hand.
 
 # Team Members
 
@@ -19,4 +18,6 @@ through WIFI.
 3. Car chasis
 4. 2 DC Motor
 
-
+# Limitations
+1. The bot can only be controlled within 2m.
+2. External Hotspot was needed for transferring data between two node-mcu.
